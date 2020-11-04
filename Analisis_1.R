@@ -1,8 +1,12 @@
+
 # Librerias necesarias ----------------------------------------------------
 library(readxl)
 library(fs)
 library(dplyr)
 library(purrr)
+library(leaflet)
+
+library(sf)
 
 # Carga de datos ----------------------------------------------------------
 dir_ls(regexp = "xlsx")  
@@ -27,13 +31,10 @@ leer_multiple_excel <- function(x) {
 
 
 # Limpieza y transformacion -----------------------------------------------
-str(datos)
 colnames(datos) <- c("Latitud", "Longitud", "Fecha_Hora", "Est_serv")
-
 datos <- transform(datos,
                    Est_serv = factor(Est_serv)
 )
-
 str(datos)
 
 
@@ -59,8 +60,11 @@ summary(datos.dep)
 head(datos.dep, n = 10)
 tail(datos.dep, n = 10)
 
+write.csv2(datos.dep, file = "./datos_dep.csv", row.names = FALSE)
 
 # identificar fechas por jerarquia
+datos.dep <- read.table("./datos_dep.csv", header = T, sep = ";")
+datos.dep <- datos.dep[,-1]
 
 datos.1 <- datos.dep %>% 
   mutate(fecha = lubridate::date(Fecha_Hora),
@@ -68,8 +72,7 @@ datos.1 <- datos.dep %>%
          año = lubridate::year(Fecha_Hora),
          dia = lubridate::day(Fecha_Hora), 
          hora = lubridate::hour(Fecha_Hora),
-         dia_sem = lubridate::wday(Fecha_Hora)) %>%
-  group_by(dia)
+         dia_sem = lubridate::wday(Fecha_Hora))
 
 summary(datos.1)
 
@@ -100,8 +103,21 @@ summary(datos)
 summary(datos$Est_serv)
 
 
-# Visualizacion
 
+# Visualizacion -----------------------------------------------------------
+# parametros visualizacion
+x <- datos.1 %>%
+  dplyr::filter(año == 2019
+                ,mes == 10
+                #,dia == 1
+                )
+# Mapa
+mapa <- leaflet() %>%
+  addTiles() %>%  # Añade por defecto los Tiles de  OpenStreetMap
+  addMarkers(lng=x$Longitud, lat=x$Latitud, 
+             clusterOptions = markerClusterOptions())
+mapa
+ 
 
 
 
