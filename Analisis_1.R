@@ -5,6 +5,7 @@ library(fs)
 library(dplyr)
 library(purrr)
 library(leaflet)
+library(ggplot2)
 
 library(sf)
 
@@ -63,16 +64,23 @@ tail(datos.dep, n = 10)
 write.csv2(datos.dep, file = "./datos_dep.csv", row.names = FALSE)
 
 # identificar fechas por jerarquia
-datos.dep <- read.table("./datos_dep.csv", header = T, sep = ";")
+datos.dep <- read.csv2("./datos_dep.csv", header = T, sep = ";")
 datos.dep <- datos.dep[,-1]
 
 datos.1 <- datos.dep %>% 
   mutate(fecha = lubridate::date(Fecha_Hora),
-        mes = lubridate::month(Fecha_Hora), 
+        mes = lubridate::month(Fecha_Hora, label = T, abbr = T), 
          año = lubridate::year(Fecha_Hora),
          dia = lubridate::day(Fecha_Hora), 
          hora = lubridate::hour(Fecha_Hora),
-         dia_sem = lubridate::wday(Fecha_Hora))
+         dia_sem = lubridate::wday(Fecha_Hora,
+                                   week_start = getOption("lubridate.week.start", 1),
+                                   label = T, abbr = F))
+
+datos.1 <- transform(datos.1,
+                     Fecha_Hora = lubridate::ymd_hms(Fecha_Hora),
+                     Est_serv = as.factor(Est_serv)
+                     )
 
 summary(datos.1)
 
@@ -85,38 +93,157 @@ str(fest)
 
 fest <- fest %>%
   transform(fest, Fecha = lubridate::dmy(Fecha)) %>% 
-  select(Fecha)
+  select(Fecha) %>% mutate(evento = "festivo")
+
+colnames(fest) <- c("fecha", "evento")
   
 # Paros
-paros <- data.frame(Fecha = lubridate::dmy("22-09-2018","10-10-2018","15-11-2018","28-11-2018"),
-                    Evento = c("Dia sin carro","Paro Nal estudiantes","Marcha Nal centrales obreras",
+paros <- data.frame(fecha = lubridate::dmy("22-09-2018","10-10-2018","15-11-2018","28-11-2018"),
+                    evento = c("Dia sin carro","Paro Nal estudiantes","Marcha Nal centrales obreras",
                                "Paro Nal centrales obreras"))  
 str(paros)
 
 # Influencia del clima
 
+inf_clima <- data.frame(fecha = lubridate::dmy("21/03/2019", "2/4/2019",
+              "19/09/2019", "30/09/2019", "1/10/2019", "16/10/2019", 
+              "14/01/2018", "2/03/2018", "30/03/2018", "3/04/2018", 
+              "4/04/2018", "17/04/2018", "6/05/2018", "23/05/2018", 
+              "28/05/2018", "29/10/2018"), evento = c("lluvia"))
 
+# Eventos total
+
+eventos <- read_excel("./Eventos.xlsx")
+eventos <- transform(eventos, fecha = lubridate::dmy(fecha))
+
+eventos <- bind_rows(eventos, fest)
+
+str(eventos)
 
 
 # Analisis exploratorio ---------------------------------------------------
-summary(datos)
-summary(datos$Est_serv)
-
+summary(datos.1)
+summary(datos.1$Est_serv)
 
 
 # Visualizacion -----------------------------------------------------------
 # parametros visualizacion
 x <- datos.1 %>%
   dplyr::filter(año == 2019
-                ,mes == 10
-                #,dia == 1
+                ,mes == "sept"
+                ,dia == 1
                 )
 # Mapa
 mapa <- leaflet() %>%
   addTiles() %>%  # Añade por defecto los Tiles de  OpenStreetMap
-  addMarkers(lng=x$Longitud, lat=x$Latitud, 
-             clusterOptions = markerClusterOptions())
+  addMarkers(lng=x$Longitud, lat=x$Latitud 
+             ,clusterOptions = markerClusterOptions()
+  )
 mapa
+
+
+# Preguntas ---------------------------------------------------------------
+# ¿Cuándo hay mayor incidencia de servicios tipo P? (Pendiente)
+# ¿A qué se puede deber? ¿Qué pasó en la ciudad en esos momentos?
+
+# Total por mes
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv == "P")) +
+  geom_bar(mapping = aes(x = mes)) + theme_bw()
+
+# Total mes por año
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv == "P")) +
+  geom_bar(mapping = aes(x = mes)) + 
+  facet_grid(~año) + theme_bw()
+
+# Total dia_sem por año
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv == "P")) +
+  geom_bar(mapping = aes(x = dia_sem)) + 
+  facet_grid(~año) + theme_bw()
+
+# Total hora por año
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv == "P")) +
+  geom_bar(mapping = aes(x = hora)) + 
+  facet_grid(~año) + theme_bw()
+
+# ¿Qué días de la semana hay más demanda?
+# Total por dia_sem
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv %in% c("A", "C", "D", "F",
+                                       "I", "M", "N", "P", "S"))) +
+  geom_bar(mapping = aes(x = dia_sem)) + theme_bw()
+
+# Total por dia_sem por año
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv %in% c("A", "C", "D", "F",
+                                       "I", "M", "N", "P", "S"))) +
+  geom_bar(mapping = aes(x = dia_sem)) + 
+  facet_grid(~año) + theme_bw()
+
+
+
+# ¿En qué horas de los días (entre semana) hay más y menos demanda?
+# Total por hora
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv %in% c("A", "C", "D", "F",
+                                       "I", "M", "N", "P", "S"),
+                       dia_sem %in% c("lunes","martes","miércoles","jueves","viernes"))) +
+  geom_bar(mapping = aes(x = hora)) + theme_bw()
+
+# Total hora por dia_sem
+ggplot(data = datos.1 %>%
+         dplyr::filter(Est_serv %in% c("A", "C", "D", "F",
+                                       "I", "M", "N", "P", "S"),
+                       dia_sem %in% c("lunes","martes","miércoles","jueves","viernes"))) +
+  geom_bar(mapping = aes(x = hora)) + 
+  facet_grid(~dia_sem) + theme_bw()
+
+
+
+# ¿La demanda cambia cuando el día es festivo?
+datos.2 <- left_join(datos.1, eventos, by = "fecha")
+
+dia_norm <- datos.1[,c(4,10)]
+  
+# Promedio dias normales 
+dia_norm <- count(datos.2 %>% filter(is.na(evento)), c("dia_sem","fecha"))
+dia_norm <- plyr::ddply(dia_norm,~dia_sem,summarise,mean=mean(freq))
+
+
+# Promedio dias festivos 
+dia_fest <- count(datos.2 %>% filter(evento == "festivo"), c("dia_sem","fecha"))
+dia_fest <- plyr::ddply(dia_fest,~dia_sem,summarise,mean=mean(freq))
+dia_fest <- bind_rows(dia_fest, data.frame(dia_sem = "domingo", mean =0))
+
+comparacion <- left_join(dia_norm, dia_fest, by = "dia_sem")
+
+comparacion <- transform(comparacion, 
+                         dia_sem = factor(dia_sem, labels = c("lunes","martes","miércoles", 
+                                                              "jueves","viernes", 
+                                                              "sábado","domingo"), levels = c(1,2,3,4,5,6,7)))
+
+# Total por dia_sem
+ggplot(data = comparacion) +
+geom_point(mapping = aes(x = dia_sem, y = mean.x, colour = "Dia normal")) +
+geom_point(mapping = aes(x = dia_sem, y = mean.y, colour = "Dia festivo")) +
+  labs(x = "Dias",
+       y = "Promedio",
+       color = "Legend") + 
+  theme_bw()
+
+
+# ¿La demanda en la ciudad cambia en épocas especiales? (Semana Santa,
+# vacaciones, Feria de Cali)
+
+
+
+# Algunos conductores reciben más servicios que otros. ¿Cómo decidir dónde
+# ubicar pistas?
+ 
+
  
 
 
